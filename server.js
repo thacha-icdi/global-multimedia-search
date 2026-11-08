@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 3000);
 const commons = 'https://commons.wikimedia.org/w/api.php';
+const aliases = {'เห็ดโคน':['Termitomyces','termite mushroom'],'ข้าวแต๋น':['khao taen','Thai rice cracker']};
 const allowedTypes = new Set(['all','image','video','audio']);
 const mimeTypes = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
 
@@ -40,7 +41,7 @@ async function search(q,type,page) {
  const target=24, batch=50, maxBatches=5;
  const found=[],seen=new Set();
  let offset=(page-1)*batch*maxBatches, exhausted=false;
- const searchText=type==='audio'?'filetype:audio '+q:type==='video'?'filetype:video '+q:type==='image'?'filetype:image '+q:q;
+ const searchText=q;
  for(let attempt=0;attempt<maxBatches && found.length<target;attempt++){
   const params=new URLSearchParams({action:'query',generator:'search',gsrsearch:searchText,gsrnamespace:'6',gsrlimit:String(batch),gsroffset:String(offset),prop:'imageinfo|info',iiprop:'url|mime|size|extmetadata',iiurlwidth:'640',inprop:'url',format:'json',formatversion:'2'});
   const response=await fetch(`${commons}?${params}`,{headers:{'User-Agent':'GlobalMultimediaSearch/4.0 (educational multimedia search)'},signal:AbortSignal.timeout(15000)});
@@ -61,6 +62,19 @@ async function search(q,type,page) {
   if(pages.length<batch||!json.continue){exhausted=true;break;}
  }
  return {items:found.slice(0,target),page,hasMore:!exhausted,provider:'Wikimedia Commons'};
+}
+
+async function searchCommons(q,type,page){
+ const terms=[q,...(aliases[normalized(q)]||[])];
+ const results=await Promise.allSettled(terms.map(term=>search(term,type,page)));
+ const successful=results.filter(r=>r.status==='fulfilled').map(r=>r.value);
+ if(!successful.length)throw new Error('Wikimedia Commons is temporarily unavailable');
+ const seen=new Set(),items=[];
+ for(const result of successful)for(const item of result.items){
+  if(seen.has(item.id))continue;
+  seen.add(item.id);items.push(item);
+ }
+ return {items,hasMore:successful.some(r=>r.hasMore),provider:'Wikimedia Commons',warnings:results.some(r=>r.status==='rejected')?['Some Wikimedia searches could not be completed.']:[]};
 }
 
 async function searchYouTube(q,pageToken='') {
@@ -88,7 +102,7 @@ async function knowledge(q){
   const languages=/[ก-๙]/.test(q)?['th','en']:['en','th'];
   for(const lang of languages){
     try{
-      const params=new URLSearchParams({action:'query',generator:'search',gsrsearch:q,gsrnamespace:'0',gsrlimit:'5',prop:'extracts|info',exintro:'1',explaintext:'1',exchars:'1100',inprop:'url',format:'json',formatversion:'2'});
+      const params=new URLSearchParams({action:'query',generator:'search',gsrsearch:lang==='en'?(aliases[normalized(q)]?.[0]||q):q,gsrnamespace:'0',gsrlimit:'5',prop:'extracts|info',exintro:'1',explaintext:'1',exchars:'1100',inprop:'url',format:'json',formatversion:'2'});
       const response=await fetch('https://'+lang+'.wikipedia.org/w/api.php?'+params,{signal:AbortSignal.timeout(9000),headers:{'User-Agent':'GlobalMultimediaSearch/3.0 (educational project)'}});
       if(!response.ok)continue;
       const data=await response.json();
@@ -99,7 +113,7 @@ async function knowledge(q){
   return {items:[],source:'Wikipedia'};
 }
 async function allMedia(q,page){
-  const jobs=await Promise.allSettled([search(q,'all',page),searchYouTube(q)]);
+  const jobs=await Promise.allSettled([searchCommons(q,'all',page),searchYouTube(q)]);
   const commonsResult=jobs[0].status==='fulfilled'?jobs[0].value:null;
   const youtubeResult=jobs[1].status==='fulfilled'?jobs[1].value:null;
   if(!commonsResult&&!youtubeResult?.items)throw new Error('All media providers unavailable');
@@ -138,7 +152,7 @@ const server=http.createServer(async(req,res)=>{
       const type=url.searchParams.get('type')||'all';
       const page=Math.max(1,Math.min(20,Number.parseInt(url.searchParams.get('page')||'1',10)||1));
       if(!q||q.length>150||!allowedTypes.has(type)) return send(res,400,{error:'Enter a query (1–150 characters) and a valid media type.'});
-      return send(res,200,await search(q,type,page));
+      return send(res,200,await searchCommons(q,type,page));
     }
     const name=url.pathname==='/'?'index.html':url.pathname.slice(1);
     if(!['index.html','style.css','app.js'].includes(name)) return send(res,404,{error:'Not found'});
