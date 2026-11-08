@@ -144,8 +144,8 @@ async function searchNearby(category){
  const token=++placeRequest,section=$('#places'),message=$('#placeStatus'),list=$('#placeList');
  section.hidden=false;$('#placeMap').hidden=false;message.textContent='กำลังตรวจสอบตำแหน่ง…';list.replaceChildren();
  $('#knowledge').hidden=true;grid.replaceChildren();status.textContent='';more.hidden=true;
+ let location=selectedLocation;
  try{
-  let location=selectedLocation;
   const typed=$('#locationInput').value.trim();
   if(typed && (!location||location.name!==typed)){
    const known={'chiang rai':[19.9072,99.8309],'เชียงราย':[19.9072,99.8309],'chiang mai':[18.7883,98.9853],'เชียงใหม่':[18.7883,98.9853],'bangkok':[13.7563,100.5018],'กรุงเทพ':[13.7563,100.5018],'phuket':[7.8804,98.3923],'ภูเก็ต':[7.8804,98.3923]};
