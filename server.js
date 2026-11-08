@@ -129,24 +129,26 @@ async function allMedia(q,page){
 
 async function geocodePlace(name){
  const query=String(name||'').trim();
- const headers={'User-Agent':'GlobalMediaEducationalSearch/1.1 (academic multimedia location search)','Accept-Language':'th,en'};
- const attempts=[
-  'https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q:query,format:'json',limit:'5',addressdetails:'1'}),
-  'https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q:query+', Thailand',format:'json',limit:'5',addressdetails:'1'}),
-  'https://geocode.maps.co/search?'+new URLSearchParams({q:query,format:'json',limit:'5'})
- ];
- for(const url of attempts){
-  try{
-   const response=await fetch(url,{headers,signal:AbortSignal.timeout(8500)});
-   if(!response.ok){console.warn('Geocoder HTTP',response.status);continue;}
-   const data=await response.json();
-   if(Array.isArray(data)&&data.length){
-    const items=data.map(p=>({name:p.display_name||query,lat:Number(p.lat),lon:Number(p.lon)})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));
-    if(items.length)return {items};
-   }
-  }catch(e){console.warn('Geocoder attempt failed:',e.message);}
+ const headers={'User-Agent':'GlobalMediaEducationalSearch/2.0 (Thailand location search)','Accept-Language':'th,en'};
+ // Search every Thai province, district and locality dynamically; never depend on a city whitelist.
+ const isThaiContext=/ประเทศไทย|ไทย|thailand/i.test(query);
+ const queries=[query,...(isThaiContext?[]:[query+', ประเทศไทย',query+', Thailand'])];
+ const endpoints=['https://nominatim.openstreetmap.org/search','https://nominatim.openstreetmap.fr/search'];
+ for(const endpoint of endpoints){
+  for(const term of queries){
+   try{
+    const params=new URLSearchParams({q:term,format:'jsonv2',limit:'8',addressdetails:'1',countrycodes:'th', 'accept-language':'th,en'});
+    const response=await fetch(endpoint+'?'+params,{headers,signal:AbortSignal.timeout(9000)});
+    if(!response.ok){console.warn('Geocoder HTTP',response.status);continue;}
+    const data=await response.json();
+    if(!Array.isArray(data))continue;
+    const items=data.map(p=>({name:p.display_name||query,lat:Number(p.lat),lon:Number(p.lon),type:p.type||'',address:p.address||{}}))
+      .filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat>=5&&p.lat<=21&&p.lon>=97&&p.lon<=106);
+    if(items.length)return {items,source:'OpenStreetMap Nominatim'};
+   }catch(e){console.warn('Geocoder attempt failed:',e.message);}
+  }
  }
- return {items:[],error:'ไม่พบตำแหน่งจากบริการแผนที่ กรุณาลองชื่อจังหวัดเป็นภาษาอังกฤษ'};
+ return {items:[],error:'ไม่พบพิกัดในประเทศไทย กรุณาระบุจังหวัด อำเภอ หรือสถานที่ให้ชัดเจน'};
 }
 async function nearbyPlaces(lat,lon,category){
  const types={restaurant:'restaurant',cafe:'cafe',hospital:'hospital',hotel:'hotel'};
