@@ -50,6 +50,9 @@ async function removeVisualDuplicates(items,signal){
   }
   return output;
 }
+function refreshSummary(){
+ $('#summary').textContent=state.items.length+' results loaded for “'+state.query+'” · '+(state.provider==='all'?'All sources':state.provider==='youtube'?'video':state.type);
+}
 function card(item){
   const article=element('article','item'),preview=element('div','preview');
   if(item.thumbnail){const img=element('img');img.src=item.thumbnail;img.alt=item.title;img.loading='lazy';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();preview.append(element('div','placeholder',item.type==='audio'?'♫':item.type==='video'?'▷':'▧'));};preview.append(img);}
@@ -79,8 +82,8 @@ async function load(reset=false){
   if(!state.query)return;
   if(state.controller)state.controller.abort();
   const controller=new AbortController();state.controller=controller;
-  if(reset){state.page=1;state.nextPageToken='';state.items=[];visualHashes.length=0;grid.replaceChildren();loadKnowledge(state.query);}
-  const current=++state.request;state.loading=true;more.hidden=true;
+  if(reset){state.page=1;state.nextPageToken='';state.items=[];visualHashes.length=0;grid.replaceChildren();refreshSummary();loadKnowledge(state.query);}
+  const current=++state.request;state.loading=true;more.hidden=true;refreshSummary();
   status.textContent='Searching '+(state.provider==='all'?'all sources':state.provider==='youtube'?'YouTube':'Wikimedia Commons')+'…';
   try{
     const params=new URLSearchParams({q:state.query});
@@ -94,7 +97,9 @@ async function load(reset=false){
       params.set('type',state.type);params.set('page',String(state.page));
       endpoint='/api/search';
     }
-    const response=await fetch(endpoint+'?'+params,{signal:controller.signal});
+    const timeout=setTimeout(()=>controller.abort(),30000);
+    let response;
+    try{response=await fetch(endpoint+'?'+params,{signal:controller.signal});}finally{clearTimeout(timeout);}
     const data=await response.json();
     if(!response.ok)throw new Error(data.error||'Search failed');
     if(current!==state.request)return;
@@ -110,10 +115,10 @@ async function load(reset=false){
     state.hasMore=Boolean(data.hasMore);
     if(data.warnings?.length)status.textContent=data.warnings.join(' ');state.nextPageToken=data.nextPageToken||'';
     if(!data.warnings?.length)status.textContent=state.items.length?'':(state.type==='audio'?'No matching audio recordings were found in Wikimedia Commons. Try a broader term, an English translation, or a related sound.':state.page===1?'No results found. Try different keywords.':'No more results.');
-    $('#summary').textContent=state.items.length+' results loaded for “'+state.query+'” · '+(state.provider==='all'?'All sources':state.provider==='youtube'?'YouTube':state.type);
+    refreshSummary();
     more.hidden=!state.hasMore;more.disabled=state.loading;
-  }catch(error){if(error.name!=='AbortError'&&current===state.request)status.textContent=error.message+' Please try again.';}
-  finally{if(current===state.request){state.loading=false;state.controller=null;}}
+  }catch(error){if(current===state.request)status.textContent=error.name==='AbortError'?'Search timed out. Please try again.':error.message+' Please try again.';}
+  finally{if(current===state.request){state.loading=false;state.controller=null;more.disabled=false;}}
 }
 function updateProvider(){
   state.provider=$('#provider').value;
@@ -124,7 +129,7 @@ function updateProvider(){
     state.type='all';
     document.querySelectorAll('[data-type]').forEach(b=>{b.disabled=false;b.classList.toggle('active',b.dataset.type==='all');});
   }
-  if(state.query)load(true);
+  refreshSummary();if(state.query)load(true);
 }
 $('#provider').addEventListener('change',updateProvider);
 $('#searchForm').addEventListener('submit',e=>{e.preventDefault();const q=$('#query').value.trim();if(!q)return;state.query=q;load(true);$('#results').scrollIntoView({behavior:'smooth'});});
@@ -143,7 +148,7 @@ document.querySelectorAll('[data-type]').forEach(button=>button.addEventListener
     $('#provider').value='commons';
   }
   document.querySelectorAll('[data-type]').forEach(b=>{b.classList.toggle('active',b===button);b.disabled=false;});
-  if(state.query)load(true);
+  refreshSummary();if(state.query)load(true);
 }));
 more.addEventListener('click',()=>{if(state.loading||!state.hasMore)return;state.page++;load();});$('#closeViewer').addEventListener('click',()=>{$('#viewer').close();$('#viewerContent').replaceChildren();});$('#viewer').addEventListener('close',()=>$('#viewerContent').replaceChildren());
 
