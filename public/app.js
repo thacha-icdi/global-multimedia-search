@@ -169,17 +169,16 @@ async function searchNearby(category){
   const {lat,lon}=location;
   const mapUrl='https://www.openstreetmap.org/?mlat='+encodeURIComponent(lat)+'&mlon='+encodeURIComponent(lon)+'#map=14/'+encodeURIComponent(lat)+'/'+encodeURIComponent(lon);
   const external=element('a','', 'เปิดแผนที่ OpenStreetMap ↗');external.href=mapUrl;external.target='_blank';external.rel='noopener noreferrer';list.append(external);
-  if(typeof L!=='undefined'){
-   $('#placeMap').hidden=false;
-   if(!placeMap){placeMap=L.map('placeMap');L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(placeMap);placeMarkers=L.layerGroup().addTo(placeMap);}
-   placeMarkers.clearLayers();placeMap.setView([lat,lon],13);
-   L.circleMarker([lat,lon],{radius:9,color:'#8d82f6',fillOpacity:1}).bindPopup(element('span','',location.name)).addTo(placeMarkers);
-   requestAnimationFrame(()=>placeMap.invalidateSize());
-  }else{
-   const frame=document.createElement('iframe');frame.title='OpenStreetMap';frame.loading='lazy';frame.referrerPolicy='no-referrer';frame.style.cssText='width:100%;height:320px;border:0;border-radius:12px';
-   const delta=.025;frame.src='https://www.openstreetmap.org/export/embed.html?bbox='+[lon-delta,lat-delta,lon+delta,lat+delta].join('%2C')+'&layer=mapnik&marker='+lat+'%2C'+lon;
-   $('#placeMap').replaceChildren(frame);
-  }
+  // Embedded map is independent of the Overpass places API and Leaflet CDN.
+  const frame=document.createElement('iframe');
+  frame.title='แผนที่ '+location.name;
+  frame.loading='eager';
+  frame.referrerPolicy='no-referrer';
+  frame.style.cssText='display:block;width:100%;height:320px;border:0;border-radius:12px;background:#e7edf4';
+  const delta=.035;
+  frame.src='https://www.openstreetmap.org/export/embed.html?bbox='+encodeURIComponent([lon-delta,lat-delta,lon+delta,lat+delta].join(','))+'&layer=mapnik&marker='+encodeURIComponent(lat+','+lon);
+  $('#placeMap').replaceChildren(frame);
+  $('#placeMap').hidden=false;
   message.textContent='แผนที่ '+location.name+' · กำลังค้นหาร้านและสถานที่…';
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
   let data;
@@ -192,7 +191,7 @@ async function searchNearby(category){
   if(token!==placeRequest)return;
   const items=data.items||[];
   for(const item of items){
-   if(placeMarkers){const marker=L.marker([item.lat,item.lon]).addTo(placeMarkers);marker.bindPopup(element('span','',item.name));}
+   
    const row=element('div','place-card');
    row.append(element('strong','',item.name),element('span','',item.address||'OpenStreetMap location'));
    const link=element('a','', 'นำทางด้วย Google Maps ↗');
@@ -200,8 +199,14 @@ async function searchNearby(category){
    link.target='_blank';link.rel='noopener noreferrer';row.append(link);list.append(row);
   }
   message.textContent=items.length+' สถานที่รอบ '+location.name+' จาก OpenStreetMap (รัศมีประมาณ 4 กม.)'+(typeof L==='undefined'?' · ใช้ลิงก์เปิดแผนที่ภายนอก':'');
-  if(placeMap)requestAnimationFrame(()=>placeMap.invalidateSize());
- }catch(e){if(token!==placeRequest)return;$('#placeMap').hidden=!selectedLocation;message.textContent=e.code===1?'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิด Location ในเบราว์เซอร์':e.name==='AbortError'?'ค้นหาสถานที่นานเกินไป กรุณาลองใหม่ หรือเปิดแผนที่จากลิงก์ด้านล่าง':e.message||'ไม่สามารถค้นหาสถานที่ได้';}
+  
+ }catch(e){if(token!==placeRequest)return;$('#placeMap').hidden=!location;message.textContent=e.code===1?'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิด Location ในเบราว์เซอร์':e.name==='AbortError'?'ค้นหาสถานที่นานเกินไป กรุณาลองใหม่ หรือเปิดแผนที่จากลิงก์ด้านล่าง':e.message||'ไม่สามารถค้นหาสถานที่ได้';
+  if(location){
+   const link=element('a','','ค้นหาร้านอาหารบน OpenStreetMap ↗');
+   link.href='https://www.openstreetmap.org/?mlat='+encodeURIComponent(location.lat)+'&mlon='+encodeURIComponent(location.lon)+'#map=14/'+encodeURIComponent(location.lat)+'/'+encodeURIComponent(location.lon);
+   link.target='_blank';link.rel='noopener noreferrer';list.append(link);
+  }
+ }
 }
 $('#useLocation').addEventListener('click',()=>{
  selectedLocation=null;$('#locationInput').value='';
