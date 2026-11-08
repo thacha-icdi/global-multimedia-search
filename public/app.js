@@ -199,7 +199,7 @@ async function searchNearby(category){
   }
   message.textContent=items.length+' สถานที่รอบ '+location.name+' จาก OpenStreetMap (รัศมีประมาณ 4 กม.)'+(typeof L==='undefined'?' · ใช้ลิงก์เปิดแผนที่ภายนอก':'');
   if(placeMap)requestAnimationFrame(()=>placeMap.invalidateSize());
- }catch(e){if(token!==placeRequest)return;message.textContent=e.code===1?'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิด Location ในเบราว์เซอร์':e.name==='AbortError'?'ค้นหาสถานที่นานเกินไป กรุณาลองใหม่ หรือเปิดแผนที่จากลิงก์ด้านล่าง':e.message||'ไม่สามารถค้นหาสถานที่ได้';}
+ }catch(e){if(token!==placeRequest)return;$('#placeMap').hidden=true;message.textContent=e.code===1?'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิด Location ในเบราว์เซอร์':e.name==='AbortError'?'ค้นหาสถานที่นานเกินไป กรุณาลองใหม่ หรือเปิดแผนที่จากลิงก์ด้านล่าง':e.message||'ไม่สามารถค้นหาสถานที่ได้';}
 }
 $('#useLocation').addEventListener('click',()=>{
  selectedLocation=null;$('#locationInput').value='';
