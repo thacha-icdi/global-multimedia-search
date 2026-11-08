@@ -59,9 +59,49 @@ async function searchYouTube(q,pageToken='') {
   })),nextPageToken:data.nextPageToken||'',hasMore:!!data.nextPageToken,provider:'YouTube'};
 }
 
+
+async function knowledge(q){
+  const languages=/[ก-๙]/.test(q)?['th','en']:['en','th'];
+  for(const lang of languages){
+    try{
+      const params=new URLSearchParams({action:'query',generator:'search',gsrsearch:q,gsrnamespace:'0',gsrlimit:'5',prop:'extracts|info',exintro:'1',explaintext:'1',exchars:'1100',inprop:'url',format:'json',formatversion:'2'});
+      const response=await fetch('https://'+lang+'.wikipedia.org/w/api.php?'+params,{signal:AbortSignal.timeout(9000),headers:{'User-Agent':'GlobalMultimediaSearch/3.0 (educational project)'}});
+      if(!response.ok)continue;
+      const data=await response.json();
+      const pages=(data.query?.pages||[]).filter(p=>p.extract?.trim());
+      if(pages.length)return {items:pages.map(p=>({title:p.title,extract:p.extract,url:p.fullurl||'https://'+lang+'.wikipedia.org/wiki/'+encodeURIComponent(p.title.replace(/ /g,'_')),language:lang})),source:'Wikipedia'};
+    }catch(e){console.warn('Knowledge lookup failed:',e.message);}
+  }
+  return {items:[],source:'Wikipedia'};
+}
+async function allMedia(q,page){
+  const jobs=await Promise.allSettled([search(q,'all',page),searchYouTube(q)]);
+  const commonsResult=jobs[0].status==='fulfilled'?jobs[0].value:null;
+  const youtubeResult=jobs[1].status==='fulfilled'?jobs[1].value:null;
+  if(!commonsResult&&!youtubeResult?.items)throw new Error('All media providers unavailable');
+  const images=(commonsResult?.items||[]).filter(x=>x.type==='image').slice(0,16);
+  const audio=(commonsResult?.items||[]).filter(x=>x.type==='audio').slice(0,8);
+  const commonsVideos=(commonsResult?.items||[]).filter(x=>x.type==='video').slice(0,6);
+  const videos=(youtubeResult?.items||[]).slice(0,12);
+  const items=[];const groups=[images,videos,audio,commonsVideos];let more=true;
+  while(more){more=false;for(const group of groups)if(group.length){items.push(group.shift());more=true;}}
+  return {items,hasMore:!!commonsResult?.hasMore,provider:'Wikimedia Commons + YouTube',warnings:[!youtubeResult?.items?'YouTube is unavailable or its API quota has been reached.':null,!commonsResult?'Wikimedia Commons is unavailable.':null].filter(Boolean)};
+}
+
 const server=http.createServer(async(req,res)=>{
   try {
     const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
+    if(url.pathname==='/api/knowledge'){
+      const q=(url.searchParams.get('q')||'').trim();
+      if(!q||q.length>150)return send(res,400,{error:'Invalid query'});
+      return send(res,200,await knowledge(q));
+    }
+    if(url.pathname==='/api/all'){
+      const q=(url.searchParams.get('q')||'').trim();
+      const page=Math.max(1,Math.min(20,Number.parseInt(url.searchParams.get('page')||'1',10)||1));
+      if(!q||q.length>150)return send(res,400,{error:'Invalid query'});
+      return send(res,200,await allMedia(q,page));
+    }
     if(url.pathname==='/api/youtube/search') {
       const q=(url.searchParams.get('q')||'').trim();
       const pageToken=(url.searchParams.get('pageToken')||'').trim();
