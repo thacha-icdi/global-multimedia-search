@@ -127,6 +127,13 @@ async function allMedia(q,page){
 }
 
 
+async function geocodePlace(name){
+ const url='https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q:name,format:'json',limit:'5',addressdetails:'1'});
+ const response=await fetch(url,{headers:{'User-Agent':'GlobalMediaEducationalSearch/1.0 (academic location search)','Accept-Language':'th,en'},signal:AbortSignal.timeout(12000)});
+ if(!response.ok)throw new Error('Location lookup unavailable');
+ const json=await response.json();
+ return {items:json.map(p=>({name:p.display_name,lat:Number(p.lat),lon:Number(p.lon)}))};
+}
 async function nearbyPlaces(lat,lon,category){
  const types={restaurant:'restaurant',cafe:'cafe',hospital:'hospital',hotel:'hotel'};
  const amenity=types[category]||'restaurant';
@@ -140,6 +147,11 @@ async function nearbyPlaces(lat,lon,category){
 const server=http.createServer(async(req,res)=>{
   try {
     const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
+    if(url.pathname==='/api/geocode'){
+      const q=(url.searchParams.get('q')||'').trim();
+      if(q.length<2||q.length>120)return send(res,400,{error:'Enter a location name (2–120 characters)'});
+      return send(res,200,await geocodePlace(q));
+    }
     if(url.pathname==='/api/places'){
       const lat=Number(url.searchParams.get('lat')),lon=Number(url.searchParams.get('lon'));
       const category=url.searchParams.get('category')||'restaurant';
