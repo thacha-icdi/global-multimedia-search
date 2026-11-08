@@ -26,34 +26,41 @@ function normalized(value){
 }
 function relevant(item,query){
  const q=normalized(query);
- const title=normalized(item.title).replace(/\.[a-z0-9]{2,6}$/,'');
+ const title=normalized(item.title).replace(/\\.[a-z0-9]{2,6}$/,'');
  const description=normalized(item.description);
- const thai=/[ก-๙]/.test(q);
- // Thai terms must be present as a complete contiguous phrase in the title.
- // Descriptions may be generic and are not sufficient evidence for Thai image matching.
- if(thai)return title.includes(q);
- const terms=q.split(/\s+/).filter(t=>t.length>=2);
+ const terms=q.split(/\\s+/).filter(Boolean);
  if(!terms.length)return false;
- return terms.every(t=>title.includes(t)) || (terms.length>1 && terms.every(t=>(title+' '+description).includes(t)));
+ // Do not accept generic metadata or unrelated fuzzy results.
+ // A full phrase in either the title or descriptive metadata is evidence.
+ if(title.includes(q)||description.includes(q))return true;
+ return terms.length>1 && terms.every(t=>t.length>1&&(title.includes(t)||description.includes(t)));
 }
 
 async function search(q,type,page) {
-  const params = new URLSearchParams({action:'query',generator:'search',gsrsearch:`filetype:multimedia ${q}`,gsrnamespace:'6',gsrlimit:'30',gsroffset:String((page-1)*30),prop:'imageinfo|info',iiprop:'url|mime|size|extmetadata',iiurlwidth:'640',inprop:'url',format:'json',formatversion:'2',origin:'*'});
-  // Commons search does not support a generic multimedia filetype; search files in namespace 6 instead.
-  params.set('gsrsearch', q);
-  const response = await fetch(`${commons}?${params}`, {headers:{'User-Agent':'GlobalMultimediaSearchDemo/1.0 (educational open-source demo; contact: example@example.com)'},signal:AbortSignal.timeout(15000)});
-  if(!response.ok) throw new Error(`Media provider returned ${response.status}`);
-  const json = await response.json();
-  if(json.error) throw new Error(json.error.info || 'Media provider error');
-  const pages = json.query?.pages || [];
-  const items = pages.map(p => {
-    const info=p.imageinfo?.[0]; if(!info) return null;
-    const kind=mediaType(info.mime); if(!kind) return null;
-    const meta=info.extmetadata||{};
-    const plain=s=>String(s||'').replace(/<[^>]*>/g,' ').replace(/&(?:nbsp|amp|lt|gt|quot);/g,' ').replace(/\s+/g,' ').trim();
-    return {id:p.pageid,title:p.title.replace(/^File:/,''),type:kind,mime:info.mime,thumbnail:info.thumburl|| (kind==='image'?info.url:null),url:info.url,source:p.fullurl||`https://commons.wikimedia.org/wiki/${encodeURIComponent(p.title.replace(/ /g,'_'))}`,license:plain(meta.LicenseShortName?.value||meta.UsageTerms?.value||'See source for license'),author:plain(meta.Artist?.value||''),description:plain(meta.ImageDescription?.value||'').slice(0,280),width:info.width||null,height:info.height||null};
-  }).filter(x=>x&&(type==='all'||x.type===type)&&relevant(x,q));
-  return {items,page,hasMore:pages.length===30,provider:'Wikimedia Commons'};
+ const target=24, batch=50, maxBatches=5;
+ const found=[],seen=new Set();
+ let offset=(page-1)*batch*maxBatches, exhausted=false;
+ const searchText=type==='audio'?'filetype:audio '+q:type==='video'?'filetype:video '+q:type==='image'?'filetype:image '+q:q;
+ for(let attempt=0;attempt<maxBatches && found.length<target;attempt++){
+  const params=new URLSearchParams({action:'query',generator:'search',gsrsearch:searchText,gsrnamespace:'6',gsrlimit:String(batch),gsroffset:String(offset),prop:'imageinfo|info',iiprop:'url|mime|size|extmetadata',iiurlwidth:'640',inprop:'url',format:'json',formatversion:'2'});
+  const response=await fetch(`${commons}?${params}`,{headers:{'User-Agent':'GlobalMultimediaSearch/4.0 (educational multimedia search)'},signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw new Error(`Wikimedia Commons returned ${response.status}`);
+  const json=await response.json();
+  if(json.error)throw new Error(json.error.info||'Wikimedia Commons search error');
+  const pages=json.query?.pages||[];
+  const plain=value=>String(value||'').replace(/<[^>]*>/g,' ').replace(/&(?:nbsp|amp|lt|gt|quot);/g,' ').replace(/\\s+/g,' ').trim();
+  for(const p of pages){
+   const info=p.imageinfo?.[0];if(!info)continue;
+   const kind=mediaType(info.mime);
+   if(!kind||(type!=='all'&&kind!==type)||seen.has(p.pageid))continue;
+   const meta=info.extmetadata||{};
+   const item={id:p.pageid,title:p.title.replace(/^File:/,''),type:kind,mime:info.mime,thumbnail:info.thumburl||(kind==='image'?info.url:null),url:info.url,source:p.fullurl||`https://commons.wikimedia.org/wiki/${encodeURIComponent(p.title.replace(/ /g,'_'))}`,license:plain(meta.LicenseShortName?.value||meta.UsageTerms?.value||'See source for license'),author:plain(meta.Artist?.value||''),description:plain(meta.ImageDescription?.value||meta.ObjectName?.value||'').slice(0,700),width:info.width||null,height:info.height||null};
+   if(relevant(item,q)){seen.add(p.pageid);found.push(item);}
+  }
+  offset+=batch;
+  if(pages.length<batch||!json.continue){exhausted=true;break;}
+ }
+ return {items:found.slice(0,target),page,hasMore:!exhausted,provider:'Wikimedia Commons'};
 }
 
 async function searchYouTube(q,pageToken='') {
@@ -73,7 +80,7 @@ async function searchYouTube(q,pageToken='') {
     url:'https://www.youtube.com/watch?v='+encodeURIComponent(x.id.videoId),
     source:'https://www.youtube.com/watch?v='+encodeURIComponent(x.id.videoId),
     description:x.snippet.description||'',author:x.snippet.channelTitle||'',license:'YouTube — check creator rights'
-  })).filter(x=>relevant(x,q)),nextPageToken:data.nextPageToken||'',hasMore:!!data.nextPageToken,provider:'YouTube'};
+  })),nextPageToken:data.nextPageToken||'',hasMore:!!data.nextPageToken,provider:'YouTube'};
 }
 
 
