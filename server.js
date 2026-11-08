@@ -27,9 +27,9 @@ function normalized(value){
 }
 function relevant(item,query){
  const q=normalized(query);
- const title=normalized(item.title).replace(/\\.[a-z0-9]{2,6}$/,'');
+ const title=normalized(item.title).replace(/\.[a-z0-9]{2,6}$/,'');
  const description=normalized(item.description);
- const terms=q.split(/\\s+/).filter(Boolean);
+ const terms=q.split(/\s+/).filter(Boolean);
  if(!terms.length)return false;
  // Do not accept generic metadata or unrelated fuzzy results.
  // A full phrase in either the title or descriptive metadata is evidence.
@@ -49,7 +49,7 @@ async function search(q,type,page) {
   const json=await response.json();
   if(json.error)throw new Error(json.error.info||'Wikimedia Commons search error');
   const pages=json.query?.pages||[];
-  const plain=value=>String(value||'').replace(/<[^>]*>/g,' ').replace(/&(?:nbsp|amp|lt|gt|quot);/g,' ').replace(/\\s+/g,' ').trim();
+  const plain=value=>String(value||'').replace(/<[^>]*>/g,' ').replace(/&(?:nbsp|amp|lt|gt|quot);/g,' ').replace(/\s+/g,' ').trim();
   for(const p of pages){
    const info=p.imageinfo?.[0];if(!info)continue;
    const kind=mediaType(info.mime);
