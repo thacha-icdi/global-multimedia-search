@@ -2,6 +2,13 @@ const $ = s => document.querySelector(s);
 const state={query:'',type:'all',page:1,loading:false,items:[],hasMore:false,request:0,provider:'commons',nextPageToken:'',controller:null};
 const grid=$('#grid'),status=$('#status'),more=$('#more');
 function element(tag,className,text){const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;}
+function mediaFingerprint(item){
+  if(item.provider==='YouTube')return 'youtube:'+item.id;
+  const raw=String(item.url||item.thumbnail||'');
+  const filename=raw.split('/').pop().split('?')[0].replace(/^\d+px-/,'').toLowerCase();
+  const title=String(item.title||'').normalize('NFKC').toLowerCase().replace(/\.[a-z0-9]{2,5}$/,'').replace(/\b(?:copy|duplicate|thumb|thumbnail|small|medium|large|original|[0-9]+px)\b/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+  return title||filename||String(item.id);
+}
 function card(item){
   const article=element('article','item'),preview=element('div','preview');
   if(item.thumbnail){const img=element('img');img.src=item.thumbnail;img.alt=item.title;img.loading='lazy';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();preview.append(element('div','placeholder',item.type==='audio'?'♫':item.type==='video'?'▷':'▧'));};preview.append(img);}
@@ -48,9 +55,15 @@ async function load(reset=false){
     const data=await response.json();
     if(!response.ok)throw new Error(data.error||'Search failed');
     if(current!==state.request)return;
-    state.items.push(...data.items);grid.append(...data.items.map(card));
+    const seen=new Set(state.items.map(mediaFingerprint));
+    const unique=(data.items||[]).filter(item=>{
+      const fingerprint=mediaFingerprint(item);
+      if(seen.has(fingerprint))return false;
+      seen.add(fingerprint);return true;
+    });
+    state.items.push(...unique);grid.append(...unique.map(card));
     state.hasMore=data.hasMore;state.nextPageToken=data.nextPageToken||'';
-    status.textContent=data.items.length?'':(state.page===1?'No results found. Try different keywords.':'No more results.');
+    status.textContent=state.items.length?'':(state.page===1?'No results found. Try different keywords.':'No more results.');
     $('#summary').textContent=state.items.length+' results loaded for “'+state.query+'” · '+(state.provider==='youtube'?'YouTube':state.type);
     more.hidden=!state.hasMore;
   }catch(error){if(error.name!=='AbortError'&&current===state.request)status.textContent=error.message+' Please try again.';}
