@@ -85,8 +85,7 @@ async function load(reset=false){
   try{
     const params=new URLSearchParams({q:state.query});
     let endpoint;
-    if(state.provider==='all'){state.type='all';document.querySelectorAll('[data-type]').forEach(b=>{b.disabled=false;b.classList.toggle('active',b.dataset.type==='all');});}
-  else if(state.provider==='youtube'){
+    if(state.provider==='youtube'){
       if(state.nextPageToken)params.set('pageToken',state.nextPageToken);
       endpoint='/api/youtube/search';
     }else if(state.provider==='all'){
@@ -110,7 +109,7 @@ async function load(reset=false){
     state.items.push(...visuallyUnique);grid.append(...visuallyUnique.map(card));
     state.hasMore=data.hasMore;
     if(data.warnings?.length)status.textContent=data.warnings.join(' ');state.nextPageToken=data.nextPageToken||'';
-    if(!data.warnings?.length)status.textContent=state.items.length?'':(state.page===1?'No results found. Try different keywords.':'No more results.');
+    if(!data.warnings?.length)status.textContent=state.items.length?'':(state.type==='audio'?'No matching audio recordings were found in Wikimedia Commons. Try a broader term, an English translation, or a related sound.':state.page===1?'No results found. Try different keywords.':'No more results.');
     $('#summary').textContent=state.items.length+' results loaded for “'+state.query+'” · '+(state.provider==='all'?'All sources':state.provider==='youtube'?'YouTube':state.type);
     more.hidden=!state.hasMore;
   }catch(error){if(error.name!=='AbortError'&&current===state.request)status.textContent=error.message+' Please try again.';}
