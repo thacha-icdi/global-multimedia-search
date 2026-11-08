@@ -138,9 +138,15 @@ async function nearbyPlaces(lat,lon,category){
  const types={restaurant:'restaurant',cafe:'cafe',hospital:'hospital',hotel:'hotel'};
  const amenity=types[category]||'restaurant';
  const query='[out:json][timeout:20];(node["amenity"="'+amenity+'"](around:4000,'+lat+','+lon+');way["amenity"="'+amenity+'"](around:4000,'+lat+','+lon+'););out center 60;';
- const response=await fetch('https://overpass.kumi.systems/api/interpreter',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':'GlobalMediaEducationalSearch/1.0'},body:new URLSearchParams({data:query}),signal:AbortSignal.timeout(25000)});
- if(!response.ok)throw new Error('Place data unavailable');
- const json=await response.json();
+ let json=null;
+ for(const host of ['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter']){
+  try{
+   const response=await fetch(host,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':'GlobalMediaEducationalSearch/1.0'},body:new URLSearchParams({data:query}),signal:AbortSignal.timeout(10000)});
+   if(!response.ok)continue;
+   json=await response.json();break;
+  }catch(e){console.warn('Overpass unavailable:',host,e.message);}
+ }
+ if(!json)throw new Error('Place data temporarily unavailable');
  return {source:'OpenStreetMap contributors',items:(json.elements||[]).map(p=>({id:p.type+'/'+p.id,name:p.tags?.['name:th']||p.tags?.name||'Unnamed place',lat:p.lat??p.center?.lat,lon:p.lon??p.center?.lon,address:[p.tags?.['addr:housenumber'],p.tags?.['addr:street'],p.tags?.['addr:city']].filter(Boolean).join(' ')})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon))};
 }
 
