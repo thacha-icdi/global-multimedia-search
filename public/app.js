@@ -148,17 +148,23 @@ async function searchNearby(category){
   let location=selectedLocation;
   const typed=$('#locationInput').value.trim();
   if(typed && (!location||location.name!==typed)){
-   message.textContent='กำลังค้นหาตำแหน่ง '+typed+'…';
-   const geocodeResponse=await fetch('/api/geocode?q='+encodeURIComponent(typed));
-   if(!geocodeResponse.ok)throw Error('ไม่สามารถค้นหาชื่อสถานที่ได้');
-   const geocodeData=await geocodeResponse.json();
-   if(!geocodeData.items?.length){
-    const known={'chiang rai':[19.9072,99.8309],'เชียงราย':[19.9072,99.8309],'chiang mai':[18.7883,98.9853],'เชียงใหม่':[18.7883,98.9853],'bangkok':[13.7563,100.5018],'กรุงเทพ':[13.7563,100.5018]};
-    const key=typed.toLowerCase().replace(/,.*$/,'').trim();
-    if(known[key])geocodeData.items=[{name:typed,lat:known[key][0],lon:known[key][1]}];
-    else throw Error('ไม่พบพิกัด กรุณาระบุเมืองหรือจังหวัดให้ชัดเจน');
+   const known={'chiang rai':[19.9072,99.8309],'เชียงราย':[19.9072,99.8309],'chiang mai':[18.7883,98.9853],'เชียงใหม่':[18.7883,98.9853],'bangkok':[13.7563,100.5018],'กรุงเทพ':[13.7563,100.5018],'phuket':[7.8804,98.3923],'ภูเก็ต':[7.8804,98.3923]};
+   const key=typed.toLowerCase().replace(/,.*$/,'').trim();
+   if(known[key]){
+    location={name:typed+' (จุดกลางเมืองโดยประมาณ)',lat:known[key][0],lon:known[key][1]};
+    selectedLocation={...location,name:typed};
+   }else{
+    message.textContent='กำลังค้นหาตำแหน่ง '+typed+'…';
+    const geoController=new AbortController();
+    const geoTimer=setTimeout(()=>geoController.abort(),8000);
+    try{
+     const response=await fetch('/api/geocode?q='+encodeURIComponent(typed),{signal:geoController.signal});
+     if(!response.ok)throw Error('บริการค้นหาพิกัดไม่พร้อมใช้งาน');
+     const data=await response.json();
+     if(!data.items?.length)throw Error('ไม่พบพิกัด กรุณาระบุจังหวัดหรือสถานที่ให้ชัดเจน');
+     location={...data.items[0],name:typed};selectedLocation=location;
+    }finally{clearTimeout(geoTimer);}
    }
-   location={...geocodeData.items[0],name:typed};selectedLocation=location;
   }
   if(!location){
    if(!navigator.geolocation)throw Error('เบราว์เซอร์ไม่รองรับ GPS กรุณาพิมพ์สถานที่');
