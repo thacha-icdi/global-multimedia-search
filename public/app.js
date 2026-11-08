@@ -185,7 +185,9 @@ async function searchNearby(category){
   let data;
   try{
    const response=await fetch('/api/places?'+new URLSearchParams({lat,lon,category}),{signal:controller.signal});
-   data=await response.json();if(!response.ok)throw Error(data.error||'Place search unavailable');
+   const raw=await response.text();
+   try{data=JSON.parse(raw);}catch{throw Error('บริการค้นหาสถานที่ส่งข้อมูลไม่ถูกต้อง กรุณาลองใหม่ภายหลัง');}
+   if(!response.ok)throw Error(data.error||'บริการค้นหาสถานที่ไม่พร้อมใช้งาน');
   }finally{clearTimeout(timer);}
   if(token!==placeRequest)return;
   const items=data.items||[];
@@ -199,7 +201,7 @@ async function searchNearby(category){
   }
   message.textContent=items.length+' สถานที่รอบ '+location.name+' จาก OpenStreetMap (รัศมีประมาณ 4 กม.)'+(typeof L==='undefined'?' · ใช้ลิงก์เปิดแผนที่ภายนอก':'');
   if(placeMap)requestAnimationFrame(()=>placeMap.invalidateSize());
- }catch(e){if(token!==placeRequest)return;$('#placeMap').hidden=true;message.textContent=e.code===1?'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิด Location ในเบราว์เซอร์':e.name==='AbortError'?'ค้นหาสถานที่นานเกินไป กรุณาลองใหม่ หรือเปิดแผนที่จากลิงก์ด้านล่าง':e.message||'ไม่สามารถค้นหาสถานที่ได้';}
+ }catch(e){if(token!==placeRequest)return;$('#placeMap').hidden=!selectedLocation;message.textContent=e.code===1?'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิด Location ในเบราว์เซอร์':e.name==='AbortError'?'ค้นหาสถานที่นานเกินไป กรุณาลองใหม่ หรือเปิดแผนที่จากลิงก์ด้านล่าง':e.message||'ไม่สามารถค้นหาสถานที่ได้';}
 }
 $('#useLocation').addEventListener('click',()=>{
  selectedLocation=null;$('#locationInput').value='';
