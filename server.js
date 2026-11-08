@@ -38,9 +38,37 @@ async function search(q,type,page) {
   }).filter(x=>x&&(type==='all'||x.type===type));
   return {items,page,hasMore:pages.length===30,provider:'Wikimedia Commons'};
 }
+
+async function searchYouTube(q,pageToken='') {
+  const key=process.env.YOUTUBE_API_KEY;
+  if(!key) return {error:'YouTube API key is not configured on the server.',status:503};
+  const params=new URLSearchParams({part:'snippet',q,type:'video',maxResults:'20',key,videoEmbeddable:'true',safeSearch:'moderate'});
+  if(pageToken) params.set('pageToken',pageToken);
+  const response=await fetch('https://www.googleapis.com/youtube/v3/search?'+params,{signal:AbortSignal.timeout(15000)});
+  const data=await response.json();
+  if(!response.ok) {
+    console.error('YouTube API error:',response.status,data.error?.message);
+    return {error:response.status===403?'YouTube API quota or access limit reached.': 'YouTube search is temporarily unavailable.',status:response.status===403?429:502};
+  }
+  return {items:(data.items||[]).filter(x=>x.id?.videoId).map(x=>({
+    id:x.id.videoId,title:x.snippet.title,type:'video',provider:'YouTube',
+    thumbnail:x.snippet.thumbnails?.high?.url||x.snippet.thumbnails?.medium?.url||'',
+    url:'https://www.youtube.com/watch?v='+encodeURIComponent(x.id.videoId),
+    source:'https://www.youtube.com/watch?v='+encodeURIComponent(x.id.videoId),
+    description:x.snippet.description||'',author:x.snippet.channelTitle||'',license:'YouTube — check creator rights'
+  })),nextPageToken:data.nextPageToken||'',hasMore:!!data.nextPageToken,provider:'YouTube'};
+}
+
 const server=http.createServer(async(req,res)=>{
   try {
     const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
+    if(url.pathname==='/api/youtube/search') {
+      const q=(url.searchParams.get('q')||'').trim();
+      const pageToken=(url.searchParams.get('pageToken')||'').trim();
+      if(!q||q.length>150||pageToken.length>300||!(/^[A-Za-z0-9_-]*$/.test(pageToken))) return send(res,400,{error:'Invalid YouTube search parameters.'});
+      const result=await searchYouTube(q,pageToken);
+      return send(res,result.status||200,result.status?{error:result.error}:result);
+    }
     if(url.pathname==='/api/search') {
       const q=(url.searchParams.get('q')||'').trim();
       const type=url.searchParams.get('type')||'all';
