@@ -142,7 +142,7 @@ function nearbyCategory(q){
 }
 async function searchNearby(category){
  const token=++placeRequest,section=$('#places'),message=$('#placeStatus'),list=$('#placeList');
- section.hidden=false;$('#placeMap').hidden=true;message.textContent='กำลังตรวจสอบตำแหน่ง…';list.replaceChildren();
+ section.hidden=false;$('#placeMap').hidden=false;message.textContent='กำลังตรวจสอบตำแหน่ง…';list.replaceChildren();
  $('#knowledge').hidden=true;grid.replaceChildren();status.textContent='';more.hidden=true;
  try{
   let location=selectedLocation;
@@ -152,7 +152,12 @@ async function searchNearby(category){
    const geocodeResponse=await fetch('/api/geocode?q='+encodeURIComponent(typed));
    if(!geocodeResponse.ok)throw Error('ไม่สามารถค้นหาชื่อสถานที่ได้');
    const geocodeData=await geocodeResponse.json();
-   if(!geocodeData.items?.length)throw Error('ไม่พบสถานที่นี้ กรุณาระบุชื่อเมืองหรือจังหวัดให้ชัดเจน');
+   if(!geocodeData.items?.length){
+    const known={'chiang rai':[19.9072,99.8309],'เชียงราย':[19.9072,99.8309],'chiang mai':[18.7883,98.9853],'เชียงใหม่':[18.7883,98.9853],'bangkok':[13.7563,100.5018],'กรุงเทพ':[13.7563,100.5018]};
+    const key=typed.toLowerCase().replace(/,.*$/,'').trim();
+    if(known[key])geocodeData.items=[{name:typed,lat:known[key][0],lon:known[key][1]}];
+    else throw Error('ไม่พบพิกัด กรุณาระบุเมืองหรือจังหวัดให้ชัดเจน');
+   }
    location={...geocodeData.items[0],name:typed};selectedLocation=location;
   }
   if(!location){
@@ -171,9 +176,11 @@ async function searchNearby(category){
    L.circleMarker([lat,lon],{radius:9,color:'#8d82f6',fillOpacity:1}).bindPopup(element('span','',location.name)).addTo(placeMarkers);
    requestAnimationFrame(()=>placeMap.invalidateSize());
   }else{
-   message.textContent='ไม่สามารถโหลดแผนที่ในหน้าเว็บได้ สามารถเปิด OpenStreetMap จากลิงก์ด้านล่าง';
+   const frame=document.createElement('iframe');frame.title='OpenStreetMap';frame.loading='lazy';frame.referrerPolicy='no-referrer';frame.style.cssText='width:100%;height:320px;border:0;border-radius:12px';
+   const delta=.025;frame.src='https://www.openstreetmap.org/export/embed.html?bbox='+[lon-delta,lat-delta,lon+delta,lat+delta].join('%2C')+'&layer=mapnik&marker='+lat+'%2C'+lon;
+   $('#placeMap').replaceChildren(frame);
   }
-  message.textContent='กำลังค้นหาร้านและสถานที่รอบ '+location.name+'…';
+  message.textContent='แผนที่ '+location.name+' · กำลังค้นหาร้านและสถานที่…';
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
   let data;
   try{
