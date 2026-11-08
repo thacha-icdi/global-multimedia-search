@@ -1,5 +1,5 @@
 const $ = s => document.querySelector(s);
-const state={query:'',type:'all',page:1,loading:false,items:[],hasMore:false,request:0,provider:'commons',nextPageToken:'',controller:null};
+const state={query:'',type:'all',page:1,loading:false,items:[],hasMore:false,request:0,provider:'all',nextPageToken:'',controller:null};
 const grid=$('#grid'),status=$('#status'),more=$('#more');
 function element(tag,className,text){const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;}
 function mediaFingerprint(item){
@@ -79,15 +79,18 @@ async function load(reset=false){
   if(!state.query)return;
   if(state.controller)state.controller.abort();
   const controller=new AbortController();state.controller=controller;
-  if(reset){state.page=1;state.nextPageToken='';state.items=[];visualHashes.length=0;grid.replaceChildren();}
+  if(reset){state.page=1;state.nextPageToken='';state.items=[];visualHashes.length=0;grid.replaceChildren();loadKnowledge(state.query);}
   const current=++state.request;state.loading=true;more.hidden=true;
-  status.textContent='Searching '+(state.provider==='youtube'?'YouTube':'Wikimedia Commons')+'…';
+  status.textContent='Searching '+(state.provider==='all'?'all sources':state.provider==='youtube'?'YouTube':'Wikimedia Commons')+'…';
   try{
     const params=new URLSearchParams({q:state.query});
     let endpoint;
-    if(state.provider==='youtube'){
+    if(state.provider==='all'){state.type='all';document.querySelectorAll('[data-type]').forEach(b=>{b.disabled=false;b.classList.toggle('active',b.dataset.type==='all');});}
+  else if(state.provider==='youtube'){
       if(state.nextPageToken)params.set('pageToken',state.nextPageToken);
       endpoint='/api/youtube/search';
+    }else if(state.provider==='all'){
+      params.set('page',String(state.page));endpoint='/api/all';
     }else{
       params.set('type',state.type);params.set('page',String(state.page));
       endpoint='/api/search';
@@ -105,9 +108,10 @@ async function load(reset=false){
     const visuallyUnique=await removeVisualDuplicates(unique,controller.signal);
     if(current!==state.request||controller.signal.aborted)return;
     state.items.push(...visuallyUnique);grid.append(...visuallyUnique.map(card));
-    state.hasMore=data.hasMore;state.nextPageToken=data.nextPageToken||'';
-    status.textContent=state.items.length?'':(state.page===1?'No results found. Try different keywords.':'No more results.');
-    $('#summary').textContent=state.items.length+' results loaded for “'+state.query+'” · '+(state.provider==='youtube'?'YouTube':state.type);
+    state.hasMore=data.hasMore;
+    if(data.warnings?.length)status.textContent=data.warnings.join(' ');state.nextPageToken=data.nextPageToken||'';
+    if(!data.warnings?.length)status.textContent=state.items.length?'':(state.page===1?'No results found. Try different keywords.':'No more results.');
+    $('#summary').textContent=state.items.length+' results loaded for “'+state.query+'” · '+(state.provider==='all'?'All sources':state.provider==='youtube'?'YouTube':state.type);
     more.hidden=!state.hasMore;
   }catch(error){if(error.name!=='AbortError'&&current===state.request)status.textContent=error.message+' Please try again.';}
   finally{if(current===state.request){state.loading=false;state.controller=null;}}
@@ -128,7 +132,9 @@ $('#searchForm').addEventListener('submit',e=>{e.preventDefault();const q=$('#qu
 document.querySelectorAll('[data-query]').forEach(button=>button.addEventListener('click',()=>{$('#query').value=button.dataset.query;state.query=button.dataset.query;load(true);$('#results').scrollIntoView({behavior:'smooth'});}));
 document.querySelectorAll('[data-type]').forEach(button=>button.addEventListener('click',()=>{
   const type=button.dataset.type;
-  if(type==='video'){
+  if(type==='all'){
+    state.provider='all';state.type='all';$('#provider').value='all';
+  }else if(type==='video'){
     state.provider='youtube';
     state.type='video';
     $('#provider').value='youtube';
@@ -141,3 +147,24 @@ document.querySelectorAll('[data-type]').forEach(button=>button.addEventListener
   if(state.query)load(true);
 }));
 more.addEventListener('click',()=>{state.page++;load();});$('#closeViewer').addEventListener('click',()=>{$('#viewer').close();$('#viewerContent').replaceChildren();});$('#viewer').addEventListener('close',()=>$('#viewerContent').replaceChildren());
+
+async function loadKnowledge(query){
+ const section=$('#knowledge'),list=$('#knowledgeItems');
+ if(!section||!list)return;
+ section.hidden=false;list.replaceChildren(element('p','', 'Looking up background information…'));
+ try{
+  const response=await fetch('/api/knowledge?q='+encodeURIComponent(query));
+  if(!response.ok)throw Error('Knowledge search unavailable');
+  const data=await response.json();
+  if(query!==state.query)return;
+  list.replaceChildren();
+  if(!data.items?.length){list.append(element('p','', 'No encyclopedia articles found for this query.'));return;}
+  for(const item of data.items){
+   const article=element('article','knowledge-card');
+   const heading=element('h3','',item.title),description=element('p','',item.extract);
+   const link=element('a','', 'Read full article on Wikipedia ↗');
+   link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';
+   article.append(heading,description,link);list.append(article);
+  }
+ }catch{list.replaceChildren(element('p','', 'Background articles are temporarily unavailable.'));}
+}
