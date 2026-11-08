@@ -183,8 +183,15 @@ async function searchNearby(category){
   frame.style.cssText='display:block;width:100%;height:320px;border:0;border-radius:12px;background:#e7edf4';
   const delta=.035;
   frame.src='https://www.openstreetmap.org/export/embed.html?bbox='+encodeURIComponent([lon-delta,lat-delta,lon+delta,lat+delta].join(','))+'&layer=mapnik&marker='+encodeURIComponent(lat+','+lon);
-  $('#placeMap').replaceChildren(frame);
-  $('#placeMap').hidden=false;
+  const mapBox=$('#placeMap');
+  const fallback=document.createElement('div');
+  fallback.style.cssText='padding:12px;text-align:center;font-size:14px';
+  const mapLink=document.createElement('a');
+  mapLink.href=mapUrl;mapLink.target='_blank';mapLink.rel='noopener noreferrer';
+  mapLink.textContent='เปิดแผนที่เชียงรายและพื้นที่ที่เลือกบน OpenStreetMap ↗';
+  fallback.append(mapLink);
+  mapBox.replaceChildren(frame,fallback);
+  mapBox.hidden=false;
   message.textContent='แผนที่ '+location.name+' · กำลังค้นหาร้านและสถานที่…';
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
   let data;
