@@ -142,7 +142,7 @@ function nearbyCategory(q){
 }
 async function searchNearby(category){
  const token=++placeRequest,section=$('#places'),message=$('#placeStatus'),list=$('#placeList');
- section.hidden=false;message.textContent='กำลังขออนุญาตใช้ตำแหน่งเพื่อค้นหาสถานที่ใกล้คุณ…';list.replaceChildren();
+ section.hidden=false;$('#placeMap').hidden=true;message.textContent='กำลังตรวจสอบตำแหน่ง…';list.replaceChildren();
  $('#knowledge').hidden=true;grid.replaceChildren();status.textContent='';more.hidden=true;
  try{
   let location=selectedLocation;
@@ -162,28 +162,37 @@ async function searchNearby(category){
   }
   if(token!==placeRequest)return;
   const {lat,lon}=location;
-  message.textContent='กำลังค้นหาสถานที่จาก OpenStreetMap…';
-  const response=await fetch('/api/places?'+new URLSearchParams({lat,lon,category}));
-  const data=await response.json();
-  if(!response.ok)throw Error(data.error||'Place search unavailable');
+  const mapUrl='https://www.openstreetmap.org/?mlat='+encodeURIComponent(lat)+'&mlon='+encodeURIComponent(lon)+'#map=14/'+encodeURIComponent(lat)+'/'+encodeURIComponent(lon);
+  const external=element('a','', 'เปิดแผนที่ OpenStreetMap ↗');external.href=mapUrl;external.target='_blank';external.rel='noopener noreferrer';list.append(external);
+  if(typeof L!=='undefined'){
+   $('#placeMap').hidden=false;
+   if(!placeMap){placeMap=L.map('placeMap');L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(placeMap);placeMarkers=L.layerGroup().addTo(placeMap);}
+   placeMarkers.clearLayers();placeMap.setView([lat,lon],13);
+   L.circleMarker([lat,lon],{radius:9,color:'#8d82f6',fillOpacity:1}).bindPopup(element('span','',location.name)).addTo(placeMarkers);
+   requestAnimationFrame(()=>placeMap.invalidateSize());
+  }else{
+   message.textContent='ไม่สามารถโหลดแผนที่ในหน้าเว็บได้ สามารถเปิด OpenStreetMap จากลิงก์ด้านล่าง';
+  }
+  message.textContent='กำลังค้นหาร้านและสถานที่รอบ '+location.name+'…';
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
+  let data;
+  try{
+   const response=await fetch('/api/places?'+new URLSearchParams({lat,lon,category}),{signal:controller.signal});
+   data=await response.json();if(!response.ok)throw Error(data.error||'Place search unavailable');
+  }finally{clearTimeout(timer);}
   if(token!==placeRequest)return;
-  if(typeof L==='undefined')throw Error('Map library could not load');
-  if(!placeMap){placeMap=L.map('placeMap');L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(placeMap);placeMarkers=L.layerGroup().addTo(placeMap);}
-  placeMarkers.clearLayers();placeMap.setView([lat,lon],13);
-  L.circleMarker([lat,lon],{radius:9,color:'#8d82f6',fillOpacity:1}).bindPopup(location.name).addTo(placeMarkers);
   const items=data.items||[];
   for(const item of items){
-   const marker=L.marker([item.lat,item.lon]).addTo(placeMarkers);
-   marker.bindPopup(document.createTextNode(item.name));
+   if(placeMarkers){const marker=L.marker([item.lat,item.lon]).addTo(placeMarkers);marker.bindPopup(element('span','',item.name));}
    const row=element('div','place-card');
    row.append(element('strong','',item.name),element('span','',item.address||'OpenStreetMap location'));
    const link=element('a','', 'นำทางด้วย Google Maps ↗');
    link.href='https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(item.lat+','+item.lon);
    link.target='_blank';link.rel='noopener noreferrer';row.append(link);list.append(row);
   }
-  message.textContent=items.length+' สถานที่รอบ '+location.name+' จาก OpenStreetMap ในรัศมีประมาณ 4 กม. ข้อมูลอาจไม่ครบถ้วน';
-  setTimeout(()=>placeMap.invalidateSize(),100);
- }catch(e){if(token!==placeRequest)return;message.textContent=e.code===1?'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิด Location ในเบราว์เซอร์':e.message||'ไม่สามารถค้นหาสถานที่ได้';}
+  message.textContent=items.length+' สถานที่รอบ '+location.name+' จาก OpenStreetMap (รัศมีประมาณ 4 กม.)'+(typeof L==='undefined'?' · ใช้ลิงก์เปิดแผนที่ภายนอก':'');
+  if(placeMap)requestAnimationFrame(()=>placeMap.invalidateSize());
+ }catch(e){if(token!==placeRequest)return;message.textContent=e.code===1?'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิด Location ในเบราว์เซอร์':e.name==='AbortError'?'ค้นหาสถานที่นานเกินไป กรุณาลองใหม่ หรือเปิดแผนที่จากลิงก์ด้านล่าง':e.message||'ไม่สามารถค้นหาสถานที่ได้';}
 }
 $('#useLocation').addEventListener('click',()=>{
  selectedLocation=null;$('#locationInput').value='';
