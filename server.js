@@ -148,6 +148,20 @@ async function geocodePlace(name){
    }catch(e){console.warn('Geocoder attempt failed:',e.message);}
   }
  }
+ // Independent Photon fallback when Nominatim is unavailable or returns no matches.
+ try{
+  const params=new URLSearchParams({q:query,limit:'8',lang:'en',bbox:'97,5,106,21'});
+  const response=await fetch('https://photon.komoot.io/api/?'+params,{signal:AbortSignal.timeout(10000),headers});
+  if(response.ok){
+   const data=await response.json();
+   const items=(data.features||[]).map(f=>({name:[f.properties?.name,f.properties?.state,f.properties?.country].filter(Boolean).join(', '),lat:Number(f.geometry?.coordinates?.[1]),lon:Number(f.geometry?.coordinates?.[0])})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.lat>=5&&p.lat<=21&&p.lon>=97&&p.lon<=106);
+   if(items.length)return {items,source:'OpenStreetMap Photon'};
+  }
+ }catch(e){console.warn('Photon fallback unavailable:',e.message);}
+ // Explicitly labeled province-center fallback, not the user's precise position.
+ const provinces={'chiang rai':[19.9072,99.8309],'เชียงราย':[19.9072,99.8309],'chiang mai':[18.7883,98.9853],'เชียงใหม่':[18.7883,98.9853],'bangkok':[13.7563,100.5018],'กรุงเทพ':[13.7563,100.5018],'ภูเก็ต':[7.8804,98.3923],'phuket':[7.8804,98.3923],'ขอนแก่น':[16.4419,102.836],'khon kaen':[16.4419,102.836]};
+ const point=provinces[query.toLowerCase().trim()];
+ if(point)return {items:[{name:query+' (จุดกลางเมืองโดยประมาณ)',lat:point[0],lon:point[1]}],source:'Approximate city center'};
  return {items:[],error:'ไม่พบพิกัดในประเทศไทย กรุณาระบุจังหวัด อำเภอ หรือสถานที่ให้ชัดเจน'};
 }
 async function nearbyPlaces(lat,lon,category){
