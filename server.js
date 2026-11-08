@@ -176,7 +176,7 @@ async function nearbyPlaces(lat,lon,category){
    json=await response.json();break;
   }catch(e){console.warn('Overpass unavailable:',host,e.message);}
  }
- if(!json)throw new Error('Place data temporarily unavailable');
+ if(!json)return {source:'OpenStreetMap contributors',items:[],warning:'บริการข้อมูลร้านอาหาร OpenStreetMap ไม่ตอบสนองชั่วคราว แผนที่ยังเปิดดูได้จากลิงก์ด้านล่าง'};
  return {source:'OpenStreetMap contributors',items:(json.elements||[]).map(p=>({id:p.type+'/'+p.id,name:p.tags?.['name:th']||p.tags?.name||'Unnamed place',lat:p.lat??p.center?.lat,lon:p.lon??p.center?.lon,address:[p.tags?.['addr:housenumber'],p.tags?.['addr:street'],p.tags?.['addr:city']].filter(Boolean).join(' ')})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon))};
 }
 
