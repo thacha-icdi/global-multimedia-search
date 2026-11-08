@@ -126,9 +126,26 @@ async function allMedia(q,page){
   return {items,hasMore:!!commonsResult?.hasMore,provider:'Wikimedia Commons + YouTube',warnings:[!youtubeResult?.items?'YouTube is unavailable or its API quota has been reached.':null,!commonsResult?'Wikimedia Commons is unavailable.':null].filter(Boolean)};
 }
 
+
+async function nearbyPlaces(lat,lon,category){
+ const types={restaurant:'restaurant',cafe:'cafe',hospital:'hospital',hotel:'hotel'};
+ const amenity=types[category]||'restaurant';
+ const query='[out:json][timeout:20];(node["amenity"="'+amenity+'"](around:4000,'+lat+','+lon+');way["amenity"="'+amenity+'"](around:4000,'+lat+','+lon+'););out center 60;';
+ const response=await fetch('https://overpass.kumi.systems/api/interpreter',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','User-Agent':'GlobalMediaEducationalSearch/1.0'},body:new URLSearchParams({data:query}),signal:AbortSignal.timeout(25000)});
+ if(!response.ok)throw new Error('Place data unavailable');
+ const json=await response.json();
+ return {source:'OpenStreetMap contributors',items:(json.elements||[]).map(p=>({id:p.type+'/'+p.id,name:p.tags?.['name:th']||p.tags?.name||'Unnamed place',lat:p.lat??p.center?.lat,lon:p.lon??p.center?.lon,address:[p.tags?.['addr:housenumber'],p.tags?.['addr:street'],p.tags?.['addr:city']].filter(Boolean).join(' ')})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon))};
+}
+
 const server=http.createServer(async(req,res)=>{
   try {
     const url=new URL(req.url,`http://${req.headers.host||'localhost'}`);
+    if(url.pathname==='/api/places'){
+      const lat=Number(url.searchParams.get('lat')),lon=Number(url.searchParams.get('lon'));
+      const category=url.searchParams.get('category')||'restaurant';
+      if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180||!['restaurant','cafe','hospital','hotel'].includes(category))return send(res,400,{error:'Invalid location or category'});
+      return send(res,200,await nearbyPlaces(lat,lon,category));
+    }
     if(url.pathname==='/api/knowledge'){
       const q=(url.searchParams.get('q')||'').trim();
       if(!q||q.length>150)return send(res,400,{error:'Invalid query'});
