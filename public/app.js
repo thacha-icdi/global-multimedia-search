@@ -107,11 +107,11 @@ async function load(reset=false){
     const visuallyUnique=await removeVisualDuplicates(unique,controller.signal);
     if(current!==state.request||controller.signal.aborted)return;
     state.items.push(...visuallyUnique);grid.append(...visuallyUnique.map(card));
-    state.hasMore=data.hasMore;
+    state.hasMore=Boolean(data.hasMore);
     if(data.warnings?.length)status.textContent=data.warnings.join(' ');state.nextPageToken=data.nextPageToken||'';
     if(!data.warnings?.length)status.textContent=state.items.length?'':(state.type==='audio'?'No matching audio recordings were found in Wikimedia Commons. Try a broader term, an English translation, or a related sound.':state.page===1?'No results found. Try different keywords.':'No more results.');
     $('#summary').textContent=state.items.length+' results loaded for “'+state.query+'” · '+(state.provider==='all'?'All sources':state.provider==='youtube'?'YouTube':state.type);
-    more.hidden=!state.hasMore;
+    more.hidden=!state.hasMore;more.disabled=state.loading;
   }catch(error){if(error.name!=='AbortError'&&current===state.request)status.textContent=error.message+' Please try again.';}
   finally{if(current===state.request){state.loading=false;state.controller=null;}}
 }
@@ -145,7 +145,7 @@ document.querySelectorAll('[data-type]').forEach(button=>button.addEventListener
   document.querySelectorAll('[data-type]').forEach(b=>{b.classList.toggle('active',b===button);b.disabled=false;});
   if(state.query)load(true);
 }));
-more.addEventListener('click',()=>{state.page++;load();});$('#closeViewer').addEventListener('click',()=>{$('#viewer').close();$('#viewerContent').replaceChildren();});$('#viewer').addEventListener('close',()=>$('#viewerContent').replaceChildren());
+more.addEventListener('click',()=>{if(state.loading||!state.hasMore)return;state.page++;load();});$('#closeViewer').addEventListener('click',()=>{$('#viewer').close();$('#viewerContent').replaceChildren();});$('#viewer').addEventListener('close',()=>$('#viewerContent').replaceChildren());
 
 async function loadKnowledge(query){
  const section=$('#knowledge'),list=$('#knowledgeItems');
