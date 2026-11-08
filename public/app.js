@@ -60,7 +60,7 @@ function updateProvider(){
   state.provider=$('#provider').value;
   if(state.provider==='youtube'){
     state.type='video';
-    document.querySelectorAll('[data-type]').forEach(b=>{b.classList.toggle('active',b.dataset.type==='video');b.disabled=b.dataset.type!=='video';});
+    document.querySelectorAll('[data-type]').forEach(b=>{b.classList.toggle('active',b.dataset.type==='video');b.disabled=false;});
   }else{
     state.type='all';
     document.querySelectorAll('[data-type]').forEach(b=>{b.disabled=false;b.classList.toggle('active',b.dataset.type==='all');});
@@ -70,5 +70,18 @@ function updateProvider(){
 $('#provider').addEventListener('change',updateProvider);
 $('#searchForm').addEventListener('submit',e=>{e.preventDefault();const q=$('#query').value.trim();if(!q)return;state.query=q;load(true);$('#results').scrollIntoView({behavior:'smooth'});});
 document.querySelectorAll('[data-query]').forEach(button=>button.addEventListener('click',()=>{$('#query').value=button.dataset.query;state.query=button.dataset.query;load(true);$('#results').scrollIntoView({behavior:'smooth'});}));
-document.querySelectorAll('[data-type]').forEach(button=>button.addEventListener('click',()=>{if(state.provider==='youtube')return;document.querySelectorAll('[data-type]').forEach(b=>b.classList.remove('active'));button.classList.add('active');state.type=button.dataset.type;if(state.query)load(true);}));
+document.querySelectorAll('[data-type]').forEach(button=>button.addEventListener('click',()=>{
+  const type=button.dataset.type;
+  if(type==='video'){
+    state.provider='youtube';
+    state.type='video';
+    $('#provider').value='youtube';
+  }else{
+    state.provider='commons';
+    state.type=type;
+    $('#provider').value='commons';
+  }
+  document.querySelectorAll('[data-type]').forEach(b=>{b.classList.toggle('active',b===button);b.disabled=false;});
+  if(state.query)load(true);
+}));
 more.addEventListener('click',()=>{state.page++;load();});$('#closeViewer').addEventListener('click',()=>{$('#viewer').close();$('#viewerContent').replaceChildren();});$('#viewer').addEventListener('close',()=>$('#viewerContent').replaceChildren());
