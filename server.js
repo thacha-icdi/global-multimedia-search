@@ -20,6 +20,23 @@ function mediaType(mime='') {
   if(mime==='application/ogg') return 'audio';
   return null;
 }
+
+function normalized(value){
+ return String(value||'').normalize('NFKC').toLocaleLowerCase().replace(/[_–—-]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function relevant(item,query){
+ const q=normalized(query);
+ const title=normalized(item.title).replace(/\.[a-z0-9]{2,6}$/,'');
+ const description=normalized(item.description);
+ const thai=/[ก-๙]/.test(q);
+ // Thai terms must be present as a complete contiguous phrase in the title.
+ // Descriptions may be generic and are not sufficient evidence for Thai image matching.
+ if(thai)return title.includes(q);
+ const terms=q.split(/\s+/).filter(t=>t.length>=2);
+ if(!terms.length)return false;
+ return terms.every(t=>title.includes(t)) || (terms.length>1 && terms.every(t=>(title+' '+description).includes(t)));
+}
+
 async function search(q,type,page) {
   const params = new URLSearchParams({action:'query',generator:'search',gsrsearch:`filetype:multimedia ${q}`,gsrnamespace:'6',gsrlimit:'30',gsroffset:String((page-1)*30),prop:'imageinfo|info',iiprop:'url|mime|size|extmetadata',iiurlwidth:'640',inprop:'url',format:'json',formatversion:'2',origin:'*'});
   // Commons search does not support a generic multimedia filetype; search files in namespace 6 instead.
@@ -35,7 +52,7 @@ async function search(q,type,page) {
     const meta=info.extmetadata||{};
     const plain=s=>String(s||'').replace(/<[^>]*>/g,' ').replace(/&(?:nbsp|amp|lt|gt|quot);/g,' ').replace(/\s+/g,' ').trim();
     return {id:p.pageid,title:p.title.replace(/^File:/,''),type:kind,mime:info.mime,thumbnail:info.thumburl|| (kind==='image'?info.url:null),url:info.url,source:p.fullurl||`https://commons.wikimedia.org/wiki/${encodeURIComponent(p.title.replace(/ /g,'_'))}`,license:plain(meta.LicenseShortName?.value||meta.UsageTerms?.value||'See source for license'),author:plain(meta.Artist?.value||''),description:plain(meta.ImageDescription?.value||'').slice(0,280),width:info.width||null,height:info.height||null};
-  }).filter(x=>x&&(type==='all'||x.type===type));
+  }).filter(x=>x&&(type==='all'||x.type===type)&&relevant(x,q));
   return {items,page,hasMore:pages.length===30,provider:'Wikimedia Commons'};
 }
 
@@ -56,7 +73,7 @@ async function searchYouTube(q,pageToken='') {
     url:'https://www.youtube.com/watch?v='+encodeURIComponent(x.id.videoId),
     source:'https://www.youtube.com/watch?v='+encodeURIComponent(x.id.videoId),
     description:x.snippet.description||'',author:x.snippet.channelTitle||'',license:'YouTube — check creator rights'
-  })),nextPageToken:data.nextPageToken||'',hasMore:!!data.nextPageToken,provider:'YouTube'};
+  })).filter(x=>relevant(x,q)),nextPageToken:data.nextPageToken||'',hasMore:!!data.nextPageToken,provider:'YouTube'};
 }
 
 
