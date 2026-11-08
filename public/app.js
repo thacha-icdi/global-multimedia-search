@@ -132,10 +132,10 @@ function updateProvider(){
   refreshSummary();if(state.query)load(true);
 }
 
-let placeMap=null,placeMarkers=null,placeRequest=0;
+let placeMap=null,placeMarkers=null,placeRequest=0,selectedLocation=null;
 function nearbyCategory(q){
  const v=q.toLowerCase();
- if(!/(ใกล้ฉัน|ใกล้ตัว|near me|nearby)/i.test(v))return null;
+ if(!/(ใกล้ฉัน|ใกล้ตัว|near me|nearby|ใน|ที่|in |at )/i.test(v))return null;
  if(/ร้านอาหาร|restaurant|food near/i.test(v))return 'restaurant';
  if(/ร้านกาแฟ|คาเฟ่|coffee|cafe/i.test(v))return 'cafe';
  return null;
@@ -144,11 +144,24 @@ async function searchNearby(category){
  const token=++placeRequest,section=$('#places'),message=$('#placeStatus'),list=$('#placeList');
  section.hidden=false;message.textContent='กำลังขออนุญาตใช้ตำแหน่งเพื่อค้นหาสถานที่ใกล้คุณ…';list.replaceChildren();
  $('#knowledge').hidden=true;grid.replaceChildren();status.textContent='';more.hidden=true;
- if(!navigator.geolocation){message.textContent='เบราว์เซอร์นี้ไม่รองรับการระบุตำแหน่ง';return;}
  try{
-  const position=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:false,timeout:12000,maximumAge:60000}));
+  let location=selectedLocation;
+  const typed=$('#locationInput').value.trim();
+  if(typed && (!location||location.name!==typed)){
+   message.textContent='กำลังค้นหาตำแหน่ง '+typed+'…';
+   const geocodeResponse=await fetch('/api/geocode?q='+encodeURIComponent(typed));
+   if(!geocodeResponse.ok)throw Error('ไม่สามารถค้นหาชื่อสถานที่ได้');
+   const geocodeData=await geocodeResponse.json();
+   if(!geocodeData.items?.length)throw Error('ไม่พบสถานที่นี้ กรุณาระบุชื่อเมืองหรือจังหวัดให้ชัดเจน');
+   location={...geocodeData.items[0],name:typed};selectedLocation=location;
+  }
+  if(!location){
+   if(!navigator.geolocation)throw Error('เบราว์เซอร์ไม่รองรับ GPS กรุณาพิมพ์สถานที่');
+   const position=await new Promise((resolve,reject)=>navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:false,timeout:12000,maximumAge:60000}));
+   location={lat:position.coords.latitude,lon:position.coords.longitude,name:'ตำแหน่งปัจจุบัน'};
+  }
   if(token!==placeRequest)return;
-  const {latitude:lat,longitude:lon}=position.coords;
+  const {lat,lon}=location;
   message.textContent='กำลังค้นหาสถานที่จาก OpenStreetMap…';
   const response=await fetch('/api/places?'+new URLSearchParams({lat,lon,category}));
   const data=await response.json();
@@ -157,7 +170,7 @@ async function searchNearby(category){
   if(typeof L==='undefined')throw Error('Map library could not load');
   if(!placeMap){placeMap=L.map('placeMap');L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(placeMap);placeMarkers=L.layerGroup().addTo(placeMap);}
   placeMarkers.clearLayers();placeMap.setView([lat,lon],13);
-  L.circleMarker([lat,lon],{radius:9,color:'#8d82f6',fillOpacity:1}).bindPopup('ตำแหน่งของคุณ').addTo(placeMarkers);
+  L.circleMarker([lat,lon],{radius:9,color:'#8d82f6',fillOpacity:1}).bindPopup(location.name).addTo(placeMarkers);
   const items=data.items||[];
   for(const item of items){
    const marker=L.marker([item.lat,item.lon]).addTo(placeMarkers);
@@ -168,13 +181,23 @@ async function searchNearby(category){
    link.href='https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(item.lat+','+item.lon);
    link.target='_blank';link.rel='noopener noreferrer';row.append(link);list.append(row);
   }
-  message.textContent=items.length+' สถานที่จาก OpenStreetMap ในรัศมีประมาณ 4 กม. ข้อมูลอาจไม่ครบถ้วน';
+  message.textContent=items.length+' สถานที่รอบ '+location.name+' จาก OpenStreetMap ในรัศมีประมาณ 4 กม. ข้อมูลอาจไม่ครบถ้วน';
   setTimeout(()=>placeMap.invalidateSize(),100);
  }catch(e){if(token!==placeRequest)return;message.textContent=e.code===1?'ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง กรุณาเปิด Location ในเบราว์เซอร์':e.message||'ไม่สามารถค้นหาสถานที่ได้';}
 }
+$('#useLocation').addEventListener('click',()=>{
+ selectedLocation=null;$('#locationInput').value='';
+ if(!navigator.geolocation){alert('เบราว์เซอร์ไม่รองรับ GPS');return;}
+ navigator.geolocation.getCurrentPosition(position=>{
+  selectedLocation={lat:position.coords.latitude,lon:position.coords.longitude,name:'ตำแหน่งปัจจุบัน'};
+  $('#locationInput').placeholder='✓ ใช้ตำแหน่งปัจจุบันแล้ว';
+  if(nearbyCategory(state.query))searchNearby(nearbyCategory(state.query));
+ },()=>alert('ไม่สามารถเข้าถึงตำแหน่งได้ กรุณาอนุญาต GPS หรือพิมพ์สถานที่'),{timeout:12000});
+});
+$('#locationInput').addEventListener('input',()=>{selectedLocation=null;});
 function runQuery(q){
  state.query=q;
- const category=nearbyCategory(q);
+ const category=nearbyCategory(q)||($('#locationInput').value.trim()&&/ร้านอาหาร|restaurant|ร้านกาแฟ|คาเฟ่|coffee|cafe/i.test(q)?(/ร้านกาแฟ|คาเฟ่|coffee|cafe/i.test(q)?'cafe':'restaurant'):null);
  if(category){if(state.controller)state.controller.abort();state.request++;searchNearby(category);}
  else{placeRequest++;$('#places').hidden=true;load(true);}
  $('#results').scrollIntoView({behavior:'smooth'});
