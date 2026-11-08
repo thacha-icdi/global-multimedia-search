@@ -9,6 +9,47 @@ function mediaFingerprint(item){
   const title=String(item.title||'').normalize('NFKC').toLowerCase().replace(/\.[a-z0-9]{2,5}$/,'').replace(/\b(?:copy|duplicate|thumb|thumbnail|small|medium|large|original|[0-9]+px)\b/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').trim();
   return title||filename||String(item.id);
 }
+// Compare thumbnail appearance as well as file names. Fail open when a provider blocks canvas access.
+const visualHashes=[];
+function imageHash(url,signal){
+  return new Promise(resolve=>{
+    if(!url)return resolve(null);
+    const img=new Image();img.crossOrigin='anonymous';
+    const timeout=setTimeout(()=>resolve(null),3500);
+    const finish=value=>{clearTimeout(timeout);resolve(value);};
+    img.onload=()=>{
+      try{
+        if(signal?.aborted)return finish(null);
+        const canvas=document.createElement('canvas');canvas.width=16;canvas.height=16;
+        const ctx=canvas.getContext('2d',{willReadFrequently:true});
+        ctx.fillStyle='#fff';ctx.fillRect(0,0,16,16);ctx.drawImage(img,0,0,16,16);
+        const pixels=ctx.getImageData(0,0,16,16).data;
+        const samples=[];
+        for(let i=0;i<pixels.length;i+=4)samples.push(Math.round((pixels[i]*.299+pixels[i+1]*.587+pixels[i+2]*.114)/32));
+        finish(samples);
+      }catch{finish(null);}
+    };
+    img.onerror=()=>finish(null);
+    img.src=url;
+  });
+}
+function visualDistance(a,b){
+  let diff=0;
+  for(let i=0;i<a.length;i++)if(Math.abs(a[i]-b[i])>1)diff++;
+  return diff/a.length;
+}
+async function removeVisualDuplicates(items,signal){
+  const output=[];
+  for(const item of items){
+    if(signal?.aborted)break;
+    if(item.type!=='image'||!item.thumbnail){output.push(item);continue;}
+    const hash=await imageHash(item.thumbnail,signal);
+    if(hash && visualHashes.some(previous=>visualDistance(previous,hash)<0.12))continue;
+    if(hash)visualHashes.push(hash);
+    output.push(item);
+  }
+  return output;
+}
 function card(item){
   const article=element('article','item'),preview=element('div','preview');
   if(item.thumbnail){const img=element('img');img.src=item.thumbnail;img.alt=item.title;img.loading='lazy';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();preview.append(element('div','placeholder',item.type==='audio'?'♫':item.type==='video'?'▷':'▧'));};preview.append(img);}
@@ -38,7 +79,7 @@ async function load(reset=false){
   if(!state.query)return;
   if(state.controller)state.controller.abort();
   const controller=new AbortController();state.controller=controller;
-  if(reset){state.page=1;state.nextPageToken='';state.items=[];grid.replaceChildren();}
+  if(reset){state.page=1;state.nextPageToken='';state.items=[];visualHashes.length=0;grid.replaceChildren();}
   const current=++state.request;state.loading=true;more.hidden=true;
   status.textContent='Searching '+(state.provider==='youtube'?'YouTube':'Wikimedia Commons')+'…';
   try{
@@ -61,7 +102,9 @@ async function load(reset=false){
       if(seen.has(fingerprint))return false;
       seen.add(fingerprint);return true;
     });
-    state.items.push(...unique);grid.append(...unique.map(card));
+    const visuallyUnique=await removeVisualDuplicates(unique,controller.signal);
+    if(current!==state.request||controller.signal.aborted)return;
+    state.items.push(...visuallyUnique);grid.append(...visuallyUnique.map(card));
     state.hasMore=data.hasMore;state.nextPageToken=data.nextPageToken||'';
     status.textContent=state.items.length?'':(state.page===1?'No results found. Try different keywords.':'No more results.');
     $('#summary').textContent=state.items.length+' results loaded for “'+state.query+'” · '+(state.provider==='youtube'?'YouTube':state.type);
