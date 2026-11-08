@@ -128,11 +128,25 @@ async function allMedia(q,page){
 
 
 async function geocodePlace(name){
- const url='https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q:name,format:'json',limit:'5',addressdetails:'1'});
- const response=await fetch(url,{headers:{'User-Agent':'GlobalMediaEducationalSearch/1.0 (academic location search)','Accept-Language':'th,en'},signal:AbortSignal.timeout(12000)});
- if(!response.ok)throw new Error('Location lookup unavailable');
- const json=await response.json();
- return {items:json.map(p=>({name:p.display_name,lat:Number(p.lat),lon:Number(p.lon)}))};
+ const query=String(name||'').trim();
+ const headers={'User-Agent':'GlobalMediaEducationalSearch/1.1 (academic multimedia location search)','Accept-Language':'th,en'};
+ const attempts=[
+  'https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q:query,format:'json',limit:'5',addressdetails:'1'}),
+  'https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q:query+', Thailand',format:'json',limit:'5',addressdetails:'1'}),
+  'https://geocode.maps.co/search?'+new URLSearchParams({q:query,format:'json',limit:'5'})
+ ];
+ for(const url of attempts){
+  try{
+   const response=await fetch(url,{headers,signal:AbortSignal.timeout(8500)});
+   if(!response.ok){console.warn('Geocoder HTTP',response.status);continue;}
+   const data=await response.json();
+   if(Array.isArray(data)&&data.length){
+    const items=data.map(p=>({name:p.display_name||query,lat:Number(p.lat),lon:Number(p.lon)})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));
+    if(items.length)return {items};
+   }
+  }catch(e){console.warn('Geocoder attempt failed:',e.message);}
+ }
+ return {items:[],error:'ไม่พบตำแหน่งจากบริการแผนที่ กรุณาลองชื่อจังหวัดเป็นภาษาอังกฤษ'};
 }
 async function nearbyPlaces(lat,lon,category){
  const types={restaurant:'restaurant',cafe:'cafe',hospital:'hospital',hotel:'hotel'};
